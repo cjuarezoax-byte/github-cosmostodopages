@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cosmos ToDo — CRUD (GitHub Pages)</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="container">
+    <h1>Cosmos ToDo</h1>
+    <p class="muted">CRUD desde GitHub Pages contra Azure Functions (Cosmos DB)</p>
+  </header>
+
+  <section class="container card">
+    <h2>Configuración</h2>
+    <div class="config-grid">
+      <label>Base URL <input id="baseUrl" placeholder="https://<app>.azurewebsites.net" /></label>
+      <label>Function Key (opcional) <input id="fnKey" placeholder="(si tus funciones no son Anonymous)" /></label>
+      <label>User ID <input id="userId" placeholder="carlos" /></label>
+    </div>
+    <div class="row gap">
+      <button id="saveCfg">Guardar</button>
+      <button id="testCors" class="secondary">Probar CORS</button>
+      <span id="cfgMsg" class="muted"></span>
+    </div>
+  </section>
+
+  <section class="container card">
+    <h2>Nueva tarea</h2>
+    <div class="row gap">
+      <input id="newTitle" placeholder="Descripción de la tarea…" />
+      <button id="addBtn">Agregar</button>
+    </div>
+  </section>
+
+  <section class="container card">
+    <div class="row between">
+      <h2>Mis tareas</h2>
+      <div class="row gap">
+        <input id="searchBox" placeholder="Filtrar…" />
+        <button id="reloadBtn" class="secondary">Recargar</button>
+      </div>
+    </div>
+    <div id="alert" class="alert" hidden></div>
+    <div id="loading" class="loading" hidden>Cargando…</div>
+    <table class="table" id="tasksTable">
+      <thead>
+        <tr>
+          <th>Hecha</th>
+          <th>Título</th>
+          <th>ID</th>
+          <th>Creada</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody id="tasksBody"></tbody>
+    </table>
+  </section>
+
+  <footer class="container muted small">
+    <p>Consejo: mantén tus endpoints y tus comandos <code>curl</code> como ya los tienes. Esta página llama a los mismos endpoints.</p>
+  </footer>
+
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

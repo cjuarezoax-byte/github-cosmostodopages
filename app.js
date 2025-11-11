@@ -10,7 +10,7 @@
   //  - "delete_path"  -> DELETE /api/tasks-delete/<id>              (delete)
   //  - "post_body"    -> POST   /api/tasks-delete {id}              (delete)  ← por defecto
   const ROUTING = {
-    update: "put_query",
+    update: "post_path",
     delete: "delete_query"
   };
   // ==============================

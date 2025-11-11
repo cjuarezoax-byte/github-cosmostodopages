@@ -1,31 +1,15 @@
 (function () {
-  // ---- Estado y utilidades --------------------------------------------------
   const $ = (sel) => document.querySelector(sel);
-  const state = {
-    cfg: {
-      baseUrl: "",
-      fnKey: "",
-      userId: ""
-    },
-    cache: []
-  };
-
+  const state = { cfg: { baseUrl: "", fnKey: "", userId: "" }, cache: [] };
   const STORAGE_KEY = "cosmosTodoCfg.v1";
+
   function loadCfg() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        state.cfg = { ...state.cfg, ...parsed };
-      } catch {}
+      try { state.cfg = { ...state.cfg, ...JSON.parse(raw) }; } catch {}
     } else if (window.CosmosTodoConfig) {
-      // prefill from config.js on first run
       const { BASE_URL, FN_KEY, DEFAULT_USER_ID } = window.CosmosTodoConfig;
-      state.cfg = {
-        baseUrl: BASE_URL || "",
-        fnKey: FN_KEY || "",
-        userId: DEFAULT_USER_ID || ""
-      };
+      state.cfg = { baseUrl: BASE_URL||"", fnKey: FN_KEY||"", userId: DEFAULT_USER_ID||"" };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state.cfg));
     }
     $("#baseUrl").value = state.cfg.baseUrl;
@@ -42,31 +26,18 @@
     setTimeout(() => $("#cfgMsg").textContent = "", 2000);
   }
 
-  function showAlert(msg) {
-    const el = $("#alert");
-    el.textContent = msg;
-    el.hidden = false;
-  }
-  function clearAlert() { $("#alert").hidden = true; }
+  function showAlert(msg){ const el=$("#alert"); el.textContent=msg; el.hidden=false; }
+  function clearAlert(){ $("#alert").hidden=true; }
 
-  function qs(params) {
-    const url = new URLSearchParams();
-    if (state.cfg.fnKey) url.set("code", state.cfg.fnKey);
-    if (state.cfg.userId) url.set("userId", state.cfg.userId);
-    return url.toString();
-  }
-
-  function endpoint(path, extraParams = {}) {
+  function endpoint(path, extraParams={}) {
     const base = state.cfg.baseUrl || "";
     if (!base) throw new Error("Configura Base URL primero.");
     const url = new URL(base + path);
-    // add default qs
     if (state.cfg.fnKey) url.searchParams.set("code", state.cfg.fnKey);
     if (state.cfg.userId) url.searchParams.set("userId", state.cfg.userId);
-    // add extra
-    Object.entries(extraParams).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, v);
-    });
+    for (const [k,v] of Object.entries(extraParams)) {
+      if (v !== undefined && v !== null && v !== "") url.searchParams.set(k,v);
+    }
     return url.toString();
   }
 
@@ -77,24 +48,26 @@
     return res.json();
   }
 
-  async function apiCreateTask(title) {
+  async function apiCreateTask(taskText) {
     const url = endpoint("/api/tasks-create");
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, userId: state.cfg.userId })
+      body: JSON.stringify({ task: taskText, userId: state.cfg.userId })
     });
     if (!res.ok) throw new Error("No se pudo crear la tarea (HTTP " + res.status + ").");
     return res.json();
   }
 
   async function apiUpdateTask(id, patch) {
-    // Soporta tanto PUT como PATCH según tu Function; aquí usamos PUT.
     const url = endpoint("/api/tasks-update", { id });
+    const body = { userId: state.cfg.userId };
+    if ("title" in patch) body.task = patch.title;
+    if ("isDone" in patch) body.done = !!patch.isDone;
     const res = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...patch, userId: state.cfg.userId })
+      body: JSON.stringify(body)
     });
     if (!res.ok) throw new Error("No se pudo actualizar la tarea (HTTP " + res.status + ").");
     return res.json();
@@ -107,34 +80,30 @@
     return res.json ? res.json() : {};
   }
 
-  // ---- UI -------------------------------------------------------------------
   function renderRows(rows) {
     const tbody = $("#tasksBody");
     tbody.innerHTML = "";
     const frag = document.createDocumentFragment();
+
     rows.forEach(t => {
       const tr = document.createElement("tr");
 
       const tdDone = document.createElement("td");
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.checked = !!t.isDone;
+      cb.checked = !!t.done;
       cb.addEventListener("change", async () => {
-        try {
-          await apiUpdateTask(t.id, { isDone: cb.checked });
-          t.isDone = cb.checked;
-        } catch (e) { showAlert(e.message); }
+        try { await apiUpdateTask(t.id, { isDone: cb.checked }); t.done = cb.checked; }
+        catch(e){ showAlert(e.message); }
       });
       tdDone.appendChild(cb);
 
       const tdTitle = document.createElement("td");
       const titleInput = document.createElement("input");
-      titleInput.value = t.title || "";
+      titleInput.value = t.task || "";
       titleInput.addEventListener("change", async () => {
-        try {
-          await apiUpdateTask(t.id, { title: titleInput.value });
-          t.title = titleInput.value;
-        } catch (e) { showAlert(e.message); }
+        try { await apiUpdateTask(t.id, { title: titleInput.value }); t.task = titleInput.value; }
+        catch(e){ showAlert(e.message); }
       });
       tdTitle.appendChild(titleInput);
 
@@ -142,7 +111,7 @@
       tdId.textContent = t.id;
 
       const tdCreated = document.createElement("td");
-      const dt = t.insertedAt ? new Date(t.insertedAt) : null;
+      const dt = t.createdAt ? new Date(t.createdAt) : null;
       tdCreated.textContent = dt ? dt.toLocaleString() : "—";
 
       const tdActions = document.createElement("td");
@@ -152,18 +121,15 @@
       delBtn.textContent = "Eliminar";
       delBtn.addEventListener("click", async () => {
         if (!confirm("¿Eliminar esta tarea?")) return;
-        try {
-          await apiDeleteTask(t.id);
-          // remove from state/cache
-          state.cache = state.cache.filter(x => x.id !== t.id);
-          applyFilter();
-        } catch (e) { showAlert(e.message); }
+        try { await apiDeleteTask(t.id); state.cache = state.cache.filter(x=>x.id!==t.id); applyFilter(); }
+        catch(e){ showAlert(e.message); }
       });
       tdActions.appendChild(delBtn);
 
       tr.append(tdDone, tdTitle, tdId, tdCreated, tdActions);
       frag.appendChild(tr);
     });
+
     tbody.appendChild(frag);
   }
 
@@ -171,7 +137,7 @@
     const q = ($("#searchBox").value || "").toLowerCase().trim();
     if (!q) return renderRows(state.cache);
     const rows = state.cache.filter(t =>
-      (t.title || "").toLowerCase().includes(q) ||
+      (t.task || "").toLowerCase().includes(q) ||
       (t.id || "").toLowerCase().includes(q)
     );
     renderRows(rows);
@@ -182,12 +148,10 @@
     $("#loading").hidden = false;
     try {
       const data = await apiGetTasks();
-      // Acepta tanto {items:[...]} como [...]
       const items = Array.isArray(data) ? data : (data.items || []);
-      // ordenar más nuevas arriba si tienen insertedAt
       state.cache = items.sort((a,b) => {
-        const ta = a.insertedAt ? Date.parse(a.insertedAt) : 0;
-        const tb = b.insertedAt ? Date.parse(b.insertedAt) : 0;
+        const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
+        const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
         return tb - ta;
       });
       applyFilter();
@@ -202,7 +166,6 @@
     clearAlert();
     try {
       const url = endpoint("/api/tasks-list");
-      // Preflight manual: OPTIONS
       const preflight = await fetch(url, {
         method: "OPTIONS",
         headers: {
@@ -210,7 +173,6 @@
           "Access-Control-Request-Method": "GET"
         }
       });
-      // Muchos hosts responderán 200 o 204; algunos no exponen OPTIONS pero CORS igual funciona.
       $("#cfgMsg").textContent = `Preflight: HTTP ${preflight.status}. Ahora probando GET…`;
       const res = await fetch(url, { method: "GET" });
       $("#cfgMsg").textContent = `GET: HTTP ${res.status}`;
@@ -220,7 +182,6 @@
     }
   }
 
-  // ---- Eventos --------------------------------------------------------------
   $("#saveCfg").addEventListener("click", saveCfg);
   $("#testCors").addEventListener("click", testCors);
   $("#reloadBtn").addEventListener("click", reload);
@@ -232,19 +193,14 @@
     $("#addBtn").disabled = true;
     try {
       const created = await apiCreateTask(title);
-      const item = created.item || created; // soporta devolver el documento completo o envuelto
+      const item = created.item || created;
       state.cache.unshift(item);
       $("#newTitle").value = "";
       applyFilter();
-    } catch (e) {
-      showAlert(e.message);
-    } finally {
-      $("#addBtn").disabled = false;
-    }
+    } catch(e){ showAlert(e.message); }
+    finally { $("#addBtn").disabled = false; }
   });
 
-  // ---- Init -----------------------------------------------------------------
   loadCfg();
-  // si ya hay baseUrl configurado, intentamos cargar de una vez
   if (state.cfg.baseUrl) reload();
 })();

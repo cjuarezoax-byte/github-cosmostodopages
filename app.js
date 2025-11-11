@@ -74,12 +74,41 @@
   }
 
   async function apiDeleteTask(id) {
-    const url = endpoint("/api/tasks-delete", { id });
-    const res = await fetch(url, { method: "DELETE" });
-    if (!res.ok) throw new Error("No se pudo eliminar la tarea (HTTP " + res.status + ").");
-    return res.json ? res.json() : {};
+    {
+      const url = endpoint("/api/tasks-delete", { id });
+      const res = await fetch(url, { method: "DELETE" });
+      if (res.ok || res.status === 204) return true;
+      if (![404, 405].includes(res.status)) {
+        // otro error (401/403/500...) => salir
+        throw new Error("No se pudo eliminar la tarea (HTTP " + res.status + ").");
+      }
+    }
+  
+    {
+      const base = state.cfg.baseUrl.replace(/\/+$/, "");
+      const url2 = new URL(base + "/api/tasks-delete/" + encodeURIComponent(id));
+      if (state.cfg.fnKey) url2.searchParams.set("code", state.cfg.fnKey);
+      if (state.cfg.userId) url2.searchParams.set("userId", state.cfg.userId);
+  
+      const res2 = await fetch(url2.toString(), { method: "DELETE" });
+      if (res2.ok || res2.status === 204) return true;
+      if (![404, 405].includes(res2.status)) {
+        throw new Error("No se pudo eliminar la tarea (HTTP " + res2.status + ").");
+      }
+    }
+  
+    {
+      const url3 = endpoint("/api/tasks-delete");
+      const res3 = await fetch(url3, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, userId: state.cfg.userId })
+      });
+      if (res3.ok || res3.status === 204) return true;
+      throw new Error("No se pudo eliminar la tarea (HTTP " + res3.status + ").");
+    }
   }
-
+  
   function renderRows(rows) {
     const tbody = $("#tasksBody");
     tbody.innerHTML = "";

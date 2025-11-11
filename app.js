@@ -11,7 +11,7 @@
   //  - "post_body"    -> POST   /api/tasks-delete {id}              (delete)  ← por defecto
   const ROUTING = {
     update: "post_path",
-    delete: "delete_path"
+    delete: "post_body"
   };
   // ==============================
 

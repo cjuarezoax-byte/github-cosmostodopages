@@ -10,7 +10,7 @@
   //  - "delete_path"  -> DELETE /api/tasks-delete/<id>              (delete)
   //  - "post_body"    -> POST   /api/tasks-delete {id}              (delete)  ← por defecto
   const ROUTING = {
-    update: "post_body",
+    update: "put_query",
     delete: "delete_query"
   };
   // ==============================
@@ -75,59 +75,56 @@
     return res.json(); // { item: {...} } o {...}
   }
 
-// === Reemplaza COMPLETO apiUpdateTask por esta versión multi-intento ===
-async function apiUpdateTask(id, patch) {
-  const base = state.cfg.baseUrl.replace(/\/+$/, "");
-  const mapBody = () => {
-    const b = { userId: state.cfg.userId };
-    if ("title" in patch) b.task = patch.title;      // contrato exacto: task
-    if ("isDone" in patch) b.done = !!patch.isDone;  // contrato exacto: done
-    return b;
-  };
+  // UPDATE: selecciona forma según ROUTING.update
+  async function apiUpdateTask(id, patch) {
+    const mode = ROUTING.update;
+    const base = state.cfg.baseUrl.replace(/\/+$/, "");
 
-  // 1) PUT con ?id=...
-  {
-    const url = endpoint("/api/tasks-update", { id });
-    const res = await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(mapBody())
-    });
-    if (res.ok) return res.json();
-    if (![404, 405].includes(res.status)) {
-      throw new Error("No se pudo actualizar la tarea (HTTP " + res.status + ").");
+    if (mode === "put_query") {
+      const url = endpoint("/api/tasks-update", { id });
+      const body = { userId: state.cfg.userId };
+      if ("title" in patch) body.task = patch.title;
+      if ("isDone" in patch) body.done = !!patch.isDone;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) throw new Error("No se pudo actualizar la tarea (HTTP " + res.status + ").");
+      return res.json();
+    }
+
+    if (mode === "post_path") {
+      const url2 = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
+      if (state.cfg.fnKey) url2.searchParams.set("code", state.cfg.fnKey);
+      if (state.cfg.userId) url2.searchParams.set("userId", state.cfg.userId);
+      const body = {};
+      if ("title" in patch) body.task = patch.title;
+      if ("isDone" in patch) body.done = !!patch.isDone;
+      const res2 = await fetch(url2.toString(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res2.ok) throw new Error("No se pudo actualizar la tarea (HTTP " + res2.status + ").");
+      return res2.json();
+    }
+
+    // default: "post_body"
+    {
+      const url3 = endpoint("/api/tasks-update");
+      const body = { id, userId: state.cfg.userId };
+      if ("title" in patch) body.task = patch.title;
+      if ("isDone" in patch) body.done = !!patch.isDone;
+      const res3 = await fetch(url3, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      if (!res3.ok) throw new Error("No se pudo actualizar la tarea (HTTP " + res3.status + ").");
+      return res3.json();
     }
   }
-
-  // 2) POST con /tasks-update/<id>
-  {
-    const url2 = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
-    if (state.cfg.fnKey) url2.searchParams.set("code", state.cfg.fnKey);
-    if (state.cfg.userId) url2.searchParams.set("userId", state.cfg.userId);
-    const res2 = await fetch(url2.toString(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(mapBody())
-    });
-    if (res2.ok) return res2.json();
-    if (![404, 405].includes(res2.status)) {
-      throw new Error("No se pudo actualizar la tarea (HTTP " + res2.status + ").");
-    }
-  }
-
-  // 3) POST con body { id, ... }
-  {
-    const url3 = endpoint("/api/tasks-update");
-    const body3 = { id, ...mapBody() };
-    const res3 = await fetch(url3, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body3)
-    });
-    if (res3.ok) return res3.json();
-    throw new Error("No se pudo actualizar la tarea (HTTP " + res3.status + ").");
-  }
-}
 
   // DELETE: selecciona forma según ROUTING.delete
   async function apiDeleteTask(id) {

@@ -62,16 +62,69 @@
     const base = state.cfg.baseUrl.replace(/\/+$/, "");
     const code = state.cfg.fnKey;
     const userId = state.cfg.userId;
-    const mkHeaders = () => { const h = { "Content-Type":"application/json" }; if (code) h["x-functions-key"] = code; return h; };
-    const makeBodies = () => {
-      const b1 = {}; if ("title" in patch) b1.task = patch.title; if ("isDone" in patch) b1.done = !!patch.isDone; if (userId) b1.userId = userId;
-      const b2 = JSON.parse(JSON.stringify(b1)); if ("isDone" in patch && b2.hasOwnProperty("done")) b2.done = String(!!patch.isDone);
-      return [b1, b2];
+    const mkHeaders = () => {
+        const h = { "Content-Type": "application/json" };
+        if (code) h["x-functions-key"] = code;
+        return h;
     };
+    const makeBodies = () => {
+        const b1 = {};
+        if ("title" in patch) b1.task = patch.title;
+        if ("isDone" in patch) b1.done = !!patch.isDone;
+        if (userId) b1.userId = userId;
+        const b2 = JSON.parse(JSON.stringify(b1));
+        if ("isDone" in patch && b2.hasOwnProperty("done")) b2.done = String(!!patch.isDone);
+        return [b1, b2];
+    };
+
     const tries = [];
     // 1) PUT ?id=
-    { const url1 = new URL(endpoint("/api/tasks-update", { id }));
-      for (const body of makeBodies()) tries.push(() => fetch(url1.toString(), { method:"PUT", headers: mkHeaders(), body: JSON.stringify(body) })); }
+    {
+        const url1 = new URL(endpoint("/api/tasks-update", { id }));
+        for (const body of makeBodies()) {
+            tries.push(() => fetch(url1.toString(), { method: "PUT", headers: mkHeaders(), body: JSON.stringify(body) }));
+        }
+    }
+    // 2) POST /<id>
+    {
+        const url2 = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
+        if (code) url2.searchParams.set("code", code);
+        if (userId) url2.searchParams.set("userId", userId);
+        for (const body of makeBodies()) {
+            tries.push(() => fetch(url2.toString(), { method: "POST", headers: mkHeaders(), body: JSON.stringify(body) }));
+        }
+    }
+    // 3) POST body con id
+    {
+        const url3 = new URL(endpoint("/api/tasks-update"));
+        for (const body of makeBodies()) {
+            const b = Object.assign({ id }, body);
+            tries.push(() => fetch(url3.toString(), { method: "POST", headers: mkHeaders(), body: JSON.stringify(b) }));
+        }
+    }
+
+    let lastStatus = 0, lastText = "";
+    for (const run of tries) {
+        try {
+            const res = await run();
+            console.log("DEBUG: Request URL:", res.url);
+            console.log("DEBUG: Status:", res.status);
+            const text = await res.text();
+            console.log("DEBUG: Response Body:", text);
+
+            lastStatus = res.status;
+            if (res.ok || res.status === 204) {
+                try { return JSON.parse(text); } catch { return {}; }
+            }
+            lastText = text;
+            if (![404, 405].includes(res.status)) break;
+        } catch (e) {
+            console.error("DEBUG: Fetch error:", e);
+            lastText = String(e);
+        }
+    }
+    throw new Error("No se pudo actualizar la tarea (HTTP " + lastStatus + "). " + (lastText || ""));
+}
     // 2) POST /<id>
     { const url2 = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
       if (code) url2.searchParams.set("code", code); if (userId) url2.searchParams.set("userId", userId);

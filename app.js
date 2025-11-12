@@ -59,32 +59,19 @@
   }
 
   async function apiUpdateTask(id, patch) {
-    const url = endpoint(`/api/tasks/${encodeURIComponent(id)}`);
-    const headers = { "Content-Type": "application/json" };
-    if (state.cfg.fnKey) headers["x-functions-key"] = state.cfg.fnKey;
-
-    const body = {};
-    if ("title" in patch) body.task = patch.title;
-    if ("isDone" in patch) body.done = !!patch.isDone;
-    if (state.cfg.userId) body.userId = state.cfg.userId;
-
-    console.log("DEBUG: PATCH URL:", url);
-    console.log("DEBUG: Request Body:", body);
-
-    const res = await fetch(url, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(body)
-    });
-
-    console.log("DEBUG: Status:", res.status);
-    const text = await res.text();
-    console.log("DEBUG: Response Body:", text);
-
-    if (!res.ok) throw new Error(`No se pudo actualizar la tarea (HTTP ${res.status}). ${text}`);
-
-    try { return JSON.parse(text); } catch { return {}; }
-}
+    const base = state.cfg.baseUrl.replace(/\/+$/, "");
+    const code = state.cfg.fnKey;
+    const userId = state.cfg.userId;
+    const mkHeaders = () => { const h = { "Content-Type":"application/json" }; if (code) h["x-functions-key"] = code; return h; };
+    const makeBodies = () => {
+      const b1 = {}; if ("title" in patch) b1.task = patch.title; if ("isDone" in patch) b1.done = !!patch.isDone; if (userId) b1.userId = userId;
+      const b2 = JSON.parse(JSON.stringify(b1)); if ("isDone" in patch && b2.hasOwnProperty("done")) b2.done = String(!!patch.isDone);
+      return [b1, b2];
+    };
+    const tries = [];
+    // 1) PUT ?id=
+    { const url1 = new URL(endpoint("/api/tasks-update", { id }));
+      for (const body of makeBodies()) tries.push(() => fetch(url1.toString(), { method:"PUT", headers: mkHeaders(), body: JSON.stringify(body) })); }
     // 2) POST /<id>
     { const url2 = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
       if (code) url2.searchParams.set("code", code); if (userId) url2.searchParams.set("userId", userId);

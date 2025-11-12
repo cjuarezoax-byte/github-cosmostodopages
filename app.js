@@ -15,6 +15,7 @@
     $("#fnKey").value = state.cfg.fnKey;
     $("#userId").value = state.cfg.userId;
   }
+
   function saveCfg() {
     state.cfg.baseUrl = $("#baseUrl").value.trim().replace(/\/+$/, "");
     state.cfg.fnKey = $("#fnKey").value.trim();
@@ -23,6 +24,7 @@
     $("#cfgMsg").textContent = "Configuración guardada ✔";
     setTimeout(() => $("#cfgMsg").textContent = "", 2000);
   }
+
   function showAlert(msg){ const el=$("#alert"); el.textContent=msg; el.hidden=false; }
   function clearAlert(){ $("#alert").hidden=true; }
 
@@ -58,50 +60,36 @@
     return res.json();
   }
 
+  // ✅ Versión FINAL: PUT /api/tasks-update/<id>?code=...
   async function apiUpdateTask(id, patch) {
-    const url = endpoint(`/api/tasks/${encodeURIComponent(id)}`);
+    const base = state.cfg.baseUrl.replace(/\/+$/, "");
+    const url = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
+    if (state.cfg.fnKey) url.searchParams.set("code", state.cfg.fnKey);
+    if (state.cfg.userId) url.searchParams.set("userId", state.cfg.userId);
+
+    const body = { userId: state.cfg.userId };
+    if ("title" in patch) body.task = patch.title;
+    if ("isDone" in patch) body.done = !!patch.isDone;
+
     const headers = { "Content-Type": "application/json" };
     if (state.cfg.fnKey) headers["x-functions-key"] = state.cfg.fnKey;
 
-    const body = {};
-    if ("title" in patch) body.task = patch.title;
-    if ("isDone" in patch) body.done = !!patch.isDone;
-    if (state.cfg.userId) body.userId = state.cfg.userId;
-
-    console.log("DEBUG: PATCH URL:", url);
-    console.log("DEBUG: Request Body:", body);
-
-    const res = await fetch(url, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(body)
+    const res = await fetch(url.toString(), {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(body)
     });
 
-    console.log("DEBUG: Status:", res.status);
-    const text = await res.text();
-    console.log("DEBUG: Response Body:", text);
-
-    if (!res.ok) throw new Error(`No se pudo actualizar la tarea (HTTP ${res.status}). ${text}`);
-
-    try { return JSON.parse(text); } catch { return {}; }
-}
-    // 2) POST /<id>
-    { const url2 = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
-      if (code) url2.searchParams.set("code", code); if (userId) url2.searchParams.set("userId", userId);
-      for (const body of makeBodies()) tries.push(() => fetch(url2.toString(), { method:"POST", headers: mkHeaders(), body: JSON.stringify(body) })); }
-    // 3) POST body con id
-    { const url3 = new URL(endpoint("/api/tasks-update"));
-      for (const body of makeBodies()) { const b = Object.assign({ id }, body);
-        tries.push(() => fetch(url3.toString(), { method:"POST", headers: mkHeaders(), body: JSON.stringify(b) })); }
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error("No se pudo actualizar la tarea (HTTP " + res.status + "). " + msg);
     }
-    let lastStatus = 0, lastText = "";
-    for (const run of tries) {
-      try { const res = await run(); lastStatus = res.status;
-        if (res.ok || res.status === 204) { try { return await res.json(); } catch { return {}; } }
-        lastText = await res.text().catch(()=> ""); if (![404,405].includes(res.status)) break;
-      } catch (e) { lastText = String(e); }
+
+    try {
+      return await res.json();
+    } catch {
+      return {};
     }
-    throw new Error("No se pudo actualizar la tarea (HTTP " + lastStatus + "). " + (lastText || ""));
   }
 
   async function apiDeleteTask(id) {
@@ -110,18 +98,10 @@
     const userId = state.cfg.userId;
     const mkHeaders = () => { const h = {}; if (code) h["x-functions-key"] = code; return h; };
 
-    // 1) DELETE ?id=
     { const url = endpoint("/api/tasks-delete", { id });
       const res = await fetch(url, { method:"DELETE", headers: mkHeaders() });
       if (res.ok || res.status === 204) return true;
       if (![404,405].includes(res.status)) throw new Error("No se pudo eliminar la tarea (HTTP " + res.status + ")."); }
-    // 2) DELETE /<id>
-    { const url2 = new URL(base + "/api/tasks-delete/" + encodeURIComponent(id));
-      if (code) url2.searchParams.set("code", code); if (userId) url2.searchParams.set("userId", userId);
-      const res2 = await fetch(url2.toString(), { method:"DELETE", headers: mkHeaders() });
-      if (res2.ok || res2.status === 204) return true;
-      if (![404,405].includes(res2.status)) throw new Error("No se pudo eliminar la tarea (HTTP " + res2.status + ")."); }
-    // 3) POST body
     { const url3 = endpoint("/api/tasks-delete");
       const headers = { "Content-Type":"application/json", ...mkHeaders() };
       const res3 = await fetch(url3, { method:"POST", headers, body: JSON.stringify({ id, userId }) });

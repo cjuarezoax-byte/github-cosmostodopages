@@ -3,6 +3,7 @@
   const state = { cfg: { baseUrl: "", fnKey: "", userId: "" }, cache: [] };
   const STORAGE_KEY = "cosmosTodoCfg.v1";
 
+  // -------- Config --------
   function loadCfg() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) { try { state.cfg = { ...state.cfg, ...JSON.parse(raw) }; } catch {}
@@ -15,7 +16,6 @@
     $("#fnKey").value = state.cfg.fnKey;
     $("#userId").value = state.cfg.userId;
   }
-
   function saveCfg() {
     state.cfg.baseUrl = $("#baseUrl").value.trim().replace(/\/+$/, "");
     state.cfg.fnKey = $("#fnKey").value.trim();
@@ -24,10 +24,10 @@
     $("#cfgMsg").textContent = "Configuración guardada ✔";
     setTimeout(() => $("#cfgMsg").textContent = "", 2000);
   }
-
   function showAlert(msg){ const el=$("#alert"); el.textContent=msg; el.hidden=false; }
   function clearAlert(){ $("#alert").hidden=true; }
 
+  // -------- Helpers --------
   function endpoint(path, extraParams = {}) {
     const base = state.cfg.baseUrl || "";
     if (!base) throw new Error("Configura Base URL primero.");
@@ -40,6 +40,7 @@
     return url.toString();
   }
 
+  // -------- API: List/Create --------
   async function apiGetTasks() {
     const url = endpoint("/api/tasks-list");
     const res = await fetch(url, { method: "GET" });
@@ -60,7 +61,7 @@
     return res.json();
   }
 
-  // ✅ Versión FINAL: PUT /api/tasks-update/<id>?code=...
+  // -------- API: Update (PUT /api/tasks-update/<id>?code&userId) --------
   async function apiUpdateTask(id, patch) {
     const base = state.cfg.baseUrl.replace(/\/+$/, "");
     const url = new URL(base + "/api/tasks-update/" + encodeURIComponent(id));
@@ -79,36 +80,32 @@
       headers,
       body: JSON.stringify(body)
     });
-
     if (!res.ok) {
       const msg = await res.text().catch(() => "");
       throw new Error("No se pudo actualizar la tarea (HTTP " + res.status + "). " + msg);
     }
-
-    try {
-      return await res.json();
-    } catch {
-      return {};
-    }
+    try { return await res.json(); } catch { return {}; }
   }
 
+  // -------- API: Delete (DELETE /api/tasks-delete/<id>?code&userId) --------
   async function apiDeleteTask(id) {
     const base = state.cfg.baseUrl.replace(/\/+$/, "");
-    const code = state.cfg.fnKey;
-    const userId = state.cfg.userId;
-    const mkHeaders = () => { const h = {}; if (code) h["x-functions-key"] = code; return h; };
+    const url = new URL(base + "/api/tasks-delete/" + encodeURIComponent(id));
+    if (state.cfg.fnKey) url.searchParams.set("code", state.cfg.fnKey);
+    if (state.cfg.userId) url.searchParams.set("userId", state.cfg.userId);
 
-    { const url = endpoint("/api/tasks-delete", { id });
-      const res = await fetch(url, { method:"DELETE", headers: mkHeaders() });
-      if (res.ok || res.status === 204) return true;
-      if (![404,405].includes(res.status)) throw new Error("No se pudo eliminar la tarea (HTTP " + res.status + ")."); }
-    { const url3 = endpoint("/api/tasks-delete");
-      const headers = { "Content-Type":"application/json", ...mkHeaders() };
-      const res3 = await fetch(url3, { method:"POST", headers, body: JSON.stringify({ id, userId }) });
-      if (res3.ok || res3.status === 204) return true;
-      throw new Error("No se pudo eliminar la tarea (HTTP " + res3.status + ")."); }
+    const headers = {};
+    if (state.cfg.fnKey) headers["x-functions-key"] = state.cfg.fnKey;
+
+    const res = await fetch(url.toString(), { method: "DELETE", headers });
+    if (!res.ok && res.status !== 204) {
+      const msg = await res.text().catch(() => "");
+      throw new Error("No se pudo eliminar la tarea (HTTP " + res.status + "). " + msg);
+    }
+    return true;
   }
 
+  // -------- UI --------
   function renderRows(rows){
     const tbody=$("#tasksBody"); tbody.innerHTML="";
     const frag=document.createDocumentFragment();
